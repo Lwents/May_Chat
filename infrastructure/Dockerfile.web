@@ -1,0 +1,10 @@
+FROM node:24-bookworm-slim AS builder
+WORKDIR /src
+COPY apps/web/package*.json ./apps/web/
+RUN npm --prefix apps/web ci
+COPY apps/web ./apps/web
+RUN cd apps/web && npx svelte-kit sync && npm run build
+
+FROM caddy:2-alpine
+COPY --from=builder /src/apps/web/build /srv
+COPY infrastructure/Caddyfile /etc/caddy/Caddyfile

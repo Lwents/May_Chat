@@ -1,0 +1,23 @@
+{
+ email {$ACME_EMAIL}
+}
+{$DOMAIN} {
+ encode zstd gzip
+ header {
+  X-Content-Type-Options nosniff
+  Referrer-Policy same-origin
+  X-Frame-Options DENY
+  Permissions-Policy "camera=(self), microphone=(self), display-capture=(self)"
+  Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; media-src 'self' blob:; connect-src 'self' wss://{$DOMAIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+ }
+ handle /api/* {
+  reverse_proxy server:8080 {
+   header_up X-Real-IP {remote_host}
+  }
+ }
+ handle {
+  root * /srv
+  try_files {path} /index.html
+  file_server
+ }
+}

@@ -1,0 +1,8 @@
+# Overlay for isolated tests; always use a separate project name (-p may-chat-test).
+services:
+  server:
+    environment:
+      APP_ORIGIN: http://localhost:8089
+  web:
+    ports: !override
+      - 127.0.0.1:8089:80

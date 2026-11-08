@@ -1,0 +1,16 @@
+node_modules/
+.svelte-kit/
+build/
+target/
+.env
+.env.*
+!.env.example
+data/
+test-results/
+playwright-report/
+*.db
+*.db-*
+*.tar.gz
+.openai/
+
+backups/

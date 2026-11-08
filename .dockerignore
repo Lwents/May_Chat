@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+node_modules
+**/node_modules
+**/.svelte-kit
+**/build
+**/target
+**/data
+test-results
+.openai

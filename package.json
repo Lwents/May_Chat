@@ -1,0 +1,12 @@
+{
+  "name": "may-chat", "private": true, "type": "module",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev -- --host 0.0.0.0",
+    "check": "npm --prefix apps/web run check",
+    "build": "npm --prefix apps/web run build && node scripts/copy-build.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:sounds": "node tests/sounds.mjs",
+    "test:limits": "node tests/limits.mjs"
+  },
+  "devDependencies": { "playwright": "^1.58.2" }
+}

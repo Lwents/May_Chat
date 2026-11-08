@@ -1,0 +1,73 @@
+name: may-chat
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ORIGIN: https://${DOMAIN:?Configure DOMAIN in .env}
+      TRUST_PROXY: 'true'
+      TURN_URLS: turn:${PUBLIC_IP:?Configure PUBLIC_IP in .env}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp
+      TURN_SECRET: ${TURN_SECRET:?Generate TURN_SECRET using scripts/configure.mjs}
+      TOKIO_WORKER_THREADS: '2'
+      RUST_LOG: may_server=info,tower_http=warn
+    volumes:
+      - app_data:/app/data
+    mem_limit: 512m
+    cpus: 1.5
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    healthcheck:
+      test: [CMD, curl, -f, -s, http://127.0.0.1:8080/api/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  web:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Configure ACME_EMAIL in .env}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      server: {condition: service_healthy}
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TURN_SECRET: ${TURN_SECRET}
+      PUBLIC_IP: ${PUBLIC_IP}
+      DOMAIN: ${DOMAIN}
+    entrypoint: [/bin/sh, /entrypoint-may.sh]
+    volumes:
+      - ./turn-entrypoint.sh:/entrypoint-may.sh:ro
+    tmpfs: ['/tmp:size=8m,mode=1777']
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:
