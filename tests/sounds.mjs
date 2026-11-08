@@ -81,13 +81,25 @@ try {
   await wait(async () => !await pa.locator('.call-overlay').count(), 'Caller did not end after rejection');
   await resetProbe(pa); await resetProbe(pb); await pb.waitForTimeout(3000);
   assert.equal((await probe(pb)).started, 0); assert.equal((await probe(pa)).started, 0);
-  await pa.getByRole('button', { name: 'Gọi thoại', exact: true }).click(); await pb.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).click();
+  const otherTab = await b.newPage(); otherTab.on('pageerror', e => errors.push(e.message));
+  await otherTab.goto(base); await otherTab.waitForSelector('.app-shell'); await settings(otherTab); await closeSettings(otherTab);
+  await wait(async () => (await otherTab.locator('.connection').textContent()).includes('Đã kết nối'), 'Other receiver tab not connected');
+  await pb.evaluate(() => { const native = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices); navigator.mediaDevices.getUserMedia = async (...args) => { const stream = await native(...args); await new Promise(r => setTimeout(r, 2500)); return stream; }; });
+  await pa.getByRole('button', { name: 'Gọi thoại', exact: true }).click();
+  await otherTab.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).waitFor();
+  await wait(async () => (await probe(otherTab)).active > 0, 'Other receiver tab did not ring');
+  await pb.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).click();
+  await wait(async () => (await pa.locator('.call-title').textContent()).includes('Đang kết nối'), 'Caller kept ringing while receiver awaited microphone', 1000);
+  await wait(async () => (await probe(pa)).active === 0 && (await probe(pb)).active === 0 && (await probe(otherTab)).active === 0, 'Answer did not immediately silence all tabs', 800);
+  assert.equal(await otherTab.locator('.incoming-call').count(), 0, 'Other receiver tab still shows incoming call');
   await wait(async () => (await pa.locator('.call-title').textContent()).includes('Đã kết nối'), 'Accepted audio call did not connect', 25000);
   await resetProbe(pa); await resetProbe(pb); await pb.waitForTimeout(3000);
   assert.equal((await probe(pb)).started, 0); assert.equal((await probe(pa)).started, 0);
+  await otherTab.reload(); await wait(async () => (await otherTab.locator('.connection').textContent()).includes('Đã kết nối'), 'Reloaded receiver tab did not connect');
+  await otherTab.waitForTimeout(500); assert.equal(await otherTab.locator('.incoming-call').count(), 0, 'Answered call rang again after refreshing another tab');
   await pa.getByRole('button', { name: 'Kết thúc cuộc gọi', exact: true }).click();
   assert.deepEqual(errors, []);
-  console.log('PASS: automatic sent/received audio and ringtone under real autoplay policy, obsolete mute settings ignored, no audio/Enter controls, browser notification setting retained, duplicate suppression, ring stops on reject/answer/end.');
+  console.log('PASS: automatic sent/received audio and ringtone under real autoplay policy, obsolete mute settings ignored, no audio/Enter controls, browser notification setting retained, duplicate suppression, ring stops on reject/answer/end, immediate silence before delayed microphone, multi-tab acceptance and no ringing after tab reload.');
 } catch (error) {
   for (const [i, ctx] of contexts.entries()) for (const page of ctx.pages()) {
     console.log('Failure page', i, 'probe:', await probe(page).catch(() => null), 'dialog:', await page.getByRole('dialog').allTextContents().catch(() => []));

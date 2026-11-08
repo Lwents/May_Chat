@@ -22,7 +22,7 @@ Chuông cuộc gọi, âm báo gửi/nhận tin luôn bật, âm lượng ứng 
 
 Ứng dụng yêu cầu quyền thông báo trình duyệt khi vào trang nếu quyền chưa được quyết định, và thử lại trên lần tương tác đầu nếu trình duyệt yêu cầu thao tác người dùng. Mục **Thông báo trình duyệt** luôn giữ trong Cài đặt để yêu cầu lại; nếu đã chặn, cần đổi quyền trong trình duyệt. Quyền thông báo hệ thống tách biệt với chuông trong ứng dụng.
 
-Chuông tự ngắt khi nhận, từ chối, hủy, hết hạn hoặc mất kết nối. Một Web Audio context dùng chung, tiếng báo ngắn và bộ đệm sự kiện giới hạn giữ tài nguyên thấp. Bài `npm run test:sounds` kiểm tra tín hiệu Web Audio thật với chính sách autoplay bật, mặc định 100% bỏ qua thiết lập mute cũ, không còn các điều khiển đã bỏ, thông báo trình duyệt còn hiển thị và chuông ngắt đúng lúc.
+Chuông tự ngắt khi nhận, từ chối, hủy, hết hạn hoặc mất kết nối. Tín hiệu `call.accepted` được gửi ngay khi nhận máy, trước khi chờ micro/camera; tiếng chờ dừng đồng thời ở bên gọi và các tab cùng tài khoản. Tải lại tab không gọi chuông lại cho cuộc gọi đã nhận. Một Web Audio context dùng chung, tiếng báo ngắn và bộ đệm sự kiện giới hạn giữ tài nguyên thấp. Bài `npm run test:sounds` kiểm tra tín hiệu Web Audio thật với chính sách autoplay bật, mặc định 100% bỏ qua thiết lập mute cũ, không còn các điều khiển đã bỏ, thông báo trình duyệt còn hiển thị và chuông ngắt đúng lúc.
 
 ## Ảnh và video trong chat
 

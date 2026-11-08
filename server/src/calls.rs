@@ -22,9 +22,10 @@ pub struct Call {
     pub status: String,
     pub created_at: i64,
 }
+// Reconnect recovery must not ring calls already answered on another tab/device.
 pub async fn active(State(app): State<App>, h: HeaderMap) -> Result<Json<Vec<Call>>> {
     let u = auth::current(&app, &h).await?;
-    Ok(Json(sqlx::query_as("SELECT c.id,c.conversation_id,c.started_by,c.mode,c.status,c.created_at FROM calls c JOIN call_members cm ON cm.call_id=c.id WHERE cm.user_id=? AND cm.status!='left' AND c.status!='ended' ORDER BY c.created_at DESC").bind(u.id).fetch_all(&app.db).await?))
+    Ok(Json(sqlx::query_as("SELECT c.id,c.conversation_id,c.started_by,c.mode,c.status,c.created_at FROM calls c JOIN call_members cm ON cm.call_id=c.id WHERE cm.user_id=? AND cm.status='invited' AND c.status!='ended' ORDER BY c.created_at DESC").bind(u.id).fetch_all(&app.db).await?))
 }
 pub async fn history(State(app): State<App>, h: HeaderMap) -> Result<Json<Vec<Call>>> {
     let u = auth::current(&app, &h).await?;
@@ -109,6 +110,15 @@ pub async fn join(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    let members: Vec<String> =
+        sqlx::query_scalar("SELECT user_id FROM call_members WHERE call_id=?")
+            .bind(&id)
+            .fetch_all(&app.db)
+            .await?;
+    app.emit(
+        &members,
+        json!({"type":"call.accepted","call_id":id,"user_id":u.id}),
+    );
     app.emit(
         &peers,
         json!({"type":"call.peer_joined","call_id":id,"user_id":u.id}),

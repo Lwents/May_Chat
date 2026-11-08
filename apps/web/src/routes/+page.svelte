@@ -80,7 +80,7 @@
     const current = calling.call;
     const authenticated = !chat.authRequired && !chat.demo && chat.connection === 'Đã kết nối';
     const busy = calling.busy;
-    const outgoing = current && !calling.started && calling.status === 'Đang đổ chuông…';
+    const outgoing = current && current.started_by === chat.me?.id && current.status === 'ringing' && !calling.answered && !calling.started;
     untrack(() => {
       if (authenticated && incoming && !current && !busy) sounds.startRinging(incoming.id, 'incoming', incoming.created_at * 1000 + 90000);
       else if (authenticated && outgoing) sounds.startRinging(current!.id, 'outgoing', current!.created_at * 1000 + 90000);

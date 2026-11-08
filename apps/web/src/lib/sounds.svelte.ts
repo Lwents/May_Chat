@@ -15,6 +15,7 @@ class Sounds {
   private expiry?: ReturnType<typeof setTimeout>;
   private voices = new Set<Voice>();
   private recent = new Set<string>();
+  private answeredCalls = new Set<string>();
   private lastReceived = 0;
   private lastSent = 0;
   private initialized = false;
@@ -103,6 +104,7 @@ class Sounds {
     }
   }
   startRinging(id: string, kind: Ring['kind'], deadline: number) {
+    if (this.answeredCalls.has(id)) return;
     if (this.wanted?.id === id && this.wanted.kind === kind) return;
     this.stopRinging();
     const remaining = Math.min(90000, deadline - Date.now());
@@ -133,6 +135,11 @@ class Sounds {
     } else {
       for (const hz of [440, 480]) this.tone(hz, 0, 1, 0.055, 'ring');
     }
+  }
+  silenceCall(id: string) {
+    this.answeredCalls.add(id);
+    if (this.answeredCalls.size > 64) this.answeredCalls.delete(this.answeredCalls.values().next().value!);
+    if (this.wanted?.id === id) this.stopRinging();
   }
   stopRinging() {
     this.wanted = undefined;
