@@ -14,3 +14,7 @@ playwright-report/
 .openai/
 
 backups/
+
+.wrangler/
+.dev.vars
+.dev.vars.*

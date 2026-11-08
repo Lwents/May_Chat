@@ -5,6 +5,7 @@ umask 077
 task_compose_file="${MAY_COMPOSE_FILE:-infrastructure/compose.yaml}"
 task_compose=(docker compose -f "$task_compose_file")
 if [[ "$task_compose_file" == infrastructure/compose.yaml ]]; then task_compose+=(--env-file .env); fi
+if [[ "$task_compose_file" == infrastructure/compose.vps.yaml ]]; then task_compose+=(--env-file .env.vps); fi
 mkdir -p backups
 task_backup_dir=$(mktemp -d)
 trap 'rm -rf "$task_backup_dir"' EXIT

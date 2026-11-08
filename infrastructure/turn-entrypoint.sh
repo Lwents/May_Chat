@@ -24,11 +24,11 @@ denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 min-port=49160
-max-port=49200
+max-port=49399
 relay-threads=2
 no-rfc5780
-total-quota=30
-user-quota=6
+total-quota=160
+user-quota=32
 max-bps=1000000
 bps-capacity=10000000
 stale-nonce=600
@@ -37,4 +37,6 @@ log-file=stdout
 simple-log
 pidfile=/tmp/turnserver.pid
 EOF
+# Host-network VPSes should advertise only their reachable relay interface.
+if [ -n "${RELAY_IP:-}" ]; then printf 'relay-ip=%s\n' "$RELAY_IP" >> /tmp/turnserver.conf; fi
 exec turnserver -c /tmp/turnserver.conf

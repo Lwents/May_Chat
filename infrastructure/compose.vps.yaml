@@ -37,6 +37,7 @@ services:
     environment:
       TURN_SECRET: ${TURN_SECRET}
       PUBLIC_IP: ${PUBLIC_IP}
+      RELAY_IP: ${PUBLIC_IP}
       DOMAIN: ${TURN_REALM:-may-chat}
     entrypoint: [/bin/sh, /entrypoint-may.sh]
     volumes: ['./turn-entrypoint.sh:/entrypoint-may.sh:ro']
