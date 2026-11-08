@@ -112,7 +112,7 @@ Frontend được build trong image; production không giữ tiến trình Node.
 | Caddy + frontend | 192 MiB | 0.5 vCPU |
 | Coturn | 256 MiB | 1 vCPU |
 
-Đây là **giới hạn**, không phải số RAM đo được hay cam kết phục vụ. Hệ điều hành, Docker, page cache và build cần thêm RAM. Image Rust build với 2 job; nên build ở máy phát triển/CI rồi đẩy image nếu VPS thiếu tài nguyên. TURN giới hạn 160 allocation, 32/user, 1.000.000 byte/s mỗi phiên, tổng 10.000.000 byte/s; cần tăng dải relay và quota theo benchmark thực tế.
+Đây là **giới hạn**, không phải số RAM đo được hay cam kết phục vụ. Hệ điều hành, Docker, page cache và build cần thêm RAM. Image Rust build với 2 job; nên build ở máy phát triển/CI rồi đẩy image nếu VPS thiếu tài nguyên. TURN giới hạn 160 allocation, 32/user, 128.000 byte/s mỗi phiên, tổng 20.480.000 byte/s (Coturn dự trữ theo từng allocation, kể cả ICE candidate chưa được chọn); cần tăng dải relay và quota theo benchmark thực tế.
 
 Backend giới hạn 256 WebSocket tổng cộng, 3 kết nối/tài khoản, queue 64 sự kiện/kết nối, mỗi frame/tin WebSocket tối đa 64 KiB. Gửi socket quá 10 giây hoặc queue đầy sẽ ngắt client; đồng bộ lại từ database. SQLx pool 4 kết nối, cache SQLite 4 MiB/kết nối, synchronous FULL; tối đa 2 tác vụ băm mật khẩu và 4 tác vụ tệp đồng thời. HTTP có rate limit theo IP, chat/signaling có rate limit theo tài khoản. `TRUST_PROXY=true` chỉ dùng khi backend được cô lập sau Caddy, vì Caddy ghi đè X-Real-IP.
 

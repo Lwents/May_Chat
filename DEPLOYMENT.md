@@ -31,7 +31,7 @@ docker compose --env-file .env.vps -f infrastructure/compose.vps.yaml up -d --bu
 curl -fsS https://may-chat-lwents.pages.dev/api/health
 ```
 
-Nginx include `/etc/nginx/snippets/may-chat-api.conf` trong HTTPS server của `lwent.cloud`. Kiểm tra `nginx -t` trước khi reload nếu chỉnh route. Chứng chỉ TLS và tác vụ gia hạn hiện có được giữ nguyên. TURN dùng TCP/UDP 3478, UDP 49160–49399, tối đa 32 allocation/tài khoản và 160 toàn server để có chỗ cho ICE khi gọi nhóm. Không đưa cổng backend 8090 ra Internet.
+Nginx include `/etc/nginx/snippets/may-chat-api.conf` trong HTTPS server của `lwent.cloud`. Kiểm tra `nginx -t` trước khi reload nếu chỉnh route. Chứng chỉ TLS và tác vụ gia hạn hiện có được giữ nguyên. TURN dùng TCP/UDP 3478, UDP 49160–49399, tối đa 32 allocation/tài khoản và 160 toàn server để có chỗ cho ICE khi gọi nhóm. Giới hạn 128.000 byte/s mỗi allocation, capacity 20.480.000 byte/s tương ứng 160 allocation; tránh dự trữ hết capacity trước khi chọn ICE candidate. Không đưa cổng backend 8090 ra Internet.
 
 ## Dữ liệu và backup
 

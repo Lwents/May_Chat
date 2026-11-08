@@ -29,8 +29,10 @@ relay-threads=2
 no-rfc5780
 total-quota=160
 user-quota=32
-max-bps=1000000
-bps-capacity=10000000
+# Coturn reserves max-bps for every ICE allocation, including unused candidates.
+# Keep the capacity consistent with total-quota to avoid false 486 failures.
+max-bps=128000
+bps-capacity=20480000
 stale-nonce=600
 no-software-attribute
 log-file=stdout
