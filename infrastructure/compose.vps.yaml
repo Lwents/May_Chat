@@ -1,0 +1,53 @@
+name: may-chat-vps
+services:
+  server:
+    image: may-chat-server:vps
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    init: true
+    ports: ['127.0.0.1:8090:8080']
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:?Set the Cloudflare Pages HTTPS origin}
+      ORIGIN_TOKEN: ${ORIGIN_TOKEN:?Set the private Pages-to-origin token}
+      TRUST_PROXY: 'true'
+      TURN_URLS: turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp
+      TURN_SECRET: ${TURN_SECRET:?Set the TURN authentication secret}
+      TOKIO_WORKER_THREADS: '2'
+      RUST_LOG: may_server=info,tower_http=warn
+    volumes: [app_data:/app/data]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    healthcheck:
+      test: [CMD, curl, -f, -s, http://127.0.0.1:8080/api/health]
+      interval: 15s
+      timeout: 3s
+      retries: 8
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TURN_SECRET: ${TURN_SECRET}
+      PUBLIC_IP: ${PUBLIC_IP}
+      DOMAIN: ${TURN_REALM:-may-chat}
+    entrypoint: [/bin/sh, /entrypoint-may.sh]
+    volumes: ['./turn-entrypoint.sh:/entrypoint-may.sh:ro']
+    tmpfs: ['/tmp:size=8m,mode=1777']
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+volumes:
+  app_data:

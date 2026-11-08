@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rates: Arc::new(Mutex::new(HashMap::new())),
         secure: origin.starts_with("https://"),
         origin,
+        origin_token: std::env::var("ORIGIN_TOKEN").unwrap_or_default(),
         uploads: std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "data/uploads".into()),
         turn_urls: std::env::var("TURN_URLS")
             .unwrap_or_default()
@@ -136,6 +137,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 async fn guard(State(app): State<App>, request: Request, next: Next) -> error::Result<Response> {
+    if !app.origin_token.is_empty()
+        && request.uri().path() != "/api/health"
+        && request
+            .headers()
+            .get("x-may-origin-key")
+            .and_then(|v| v.to_str().ok())
+            != Some(&app.origin_token)
+    {
+        return Err(error::denied());
+    }
+
     if !matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS

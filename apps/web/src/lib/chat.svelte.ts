@@ -71,6 +71,7 @@ class Chat {
     this.stopped = false;
     try { const health = await api<{ service?: string }>('/health'); this.backend = health.service === 'may-rust'; } catch { this.backend = false; }
     if (this.backend) { try { this.me = await api<Person>('/me'); await this.activate(); } catch { this.authRequired = true; } }
+    else if (import.meta.env.VITE_REQUIRE_BACKEND === 'true') { this.backend = true; this.authRequired = true; this.connection = 'Máy chủ chưa sẵn sàng'; this.notify('Máy chủ tạm thời chưa kết nối được. Vui lòng thử lại sau.'); }
     else this.startDemo();
     this.ready = true;
   }

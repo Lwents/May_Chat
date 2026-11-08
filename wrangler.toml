@@ -1,0 +1,7 @@
+name = "may-chat-lwents"
+pages_build_output_dir = "./build"
+compatibility_date = "2026-11-08"
+
+[vars]
+BACKEND_ORIGIN = "https://lwent.cloud/may-chat"
+# ORIGIN_TOKEN is a Pages secret; never put its value in this file.

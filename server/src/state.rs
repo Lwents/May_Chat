@@ -26,6 +26,7 @@ pub struct App {
     pub file_slots: Arc<Semaphore>,
     pub rates: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub origin: String,
+    pub origin_token: String,
     pub secure: bool,
     pub uploads: String,
     pub turn_urls: Vec<String>,
