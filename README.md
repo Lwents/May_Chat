@@ -14,23 +14,21 @@
 - Mời/nhận/từ chối/kết thúc cuộc gọi, lịch sử cuộc gọi. Cuộc gọi dừng khi mất WebSocket; đóng tab cuối cùng sẽ giải phóng trạng thái cuộc gọi trên máy chủ sau khi phát hiện mất kết nối. Cuộc gọi chưa trả lời hết hạn sau khoảng 90–120 giây; cuộc gọi hoạt động giới hạn 4 giờ.
 - Coturn với thông tin đăng nhập HMAC ngắn hạn 1 giờ, Caddy HTTPS, Docker Compose có giới hạn tài nguyên và log xoay vòng. Script sao lưu SQLite bằng online backup API qua sqlite3.
 
-## Chuông cuộc gọi và âm báo tin nhắn
+## Chuông và thông báo
 
-Âm thanh mặc định bật, âm lượng 70%: có tiếng xác nhận khi gửi thành công, tiếng báo tin mới, chuông cuộc gọi đến lặp lại và tiếng chờ bên gọi. Chuông dừng khi nhận, từ chối, hủy, hết thời gian chờ, mất kết nối hoặc đăng xuất. Không phát lại âm báo cho lịch sử đồng bộ hay các sự kiện ACK/retry trùng; tin đến dồn dập được gộp âm báo.
+Chuông cuộc gọi, âm báo gửi/nhận tin luôn bật, âm lượng ứng dụng mặc định 100%. Không có nút bật chuông, nghe thử, thanh âm lượng hoặc lựa chọn Enter trong cài đặt. Các thiết lập tắt tiếng/âm lượng cũ được bỏ qua. Trên máy tính Enter gửi tin, Shift+Enter xuống dòng; điện thoại dùng nút gửi.
 
-Trong **Cài đặt → Âm thanh**, có hai nút bật/tắt riêng cho tin nhắn và cuộc gọi, thanh âm lượng và nút **Nghe thử tin nhắn / Nghe thử chuông**. Tùy chọn được lưu trên trình duyệt và đồng bộ sang tab khác cùng origin. Đây là âm lượng thông báo, không thay đổi âm thanh micro/loa của người tham gia WebRTC.
+Ứng dụng tự khởi tạo âm thanh khi vào trang và tự khôi phục trên lần tương tác thông thường đầu tiên hoặc khi trở lại tab, không cần bấm nút bật âm thanh riêng. Chính sách autoplay của trình duyệt vẫn có thể chặn âm thanh trước lần tương tác đầu tiên; website không thể vượt qua hạn chế này. Xem [chính sách autoplay của Chrome](https://developer.chrome.com/blog/autoplay/). Tab/loa bị tắt tiếng và điện thoại khóa màn hình cũng có thể ngăn âm thanh.
 
-Sau khi mở hoặc tải lại trang, chạm **Chạm để bật chuông và âm báo**, hoặc tương tác với ứng dụng để khởi tạo âm thanh. Nếu cuộc gọi đến trước lần tương tác đầu, thẻ cuộc gọi có nút **Bật chuông**. Trình duyệt có thể chặn Web Audio cho đến khi người dùng tương tác; xem [chính sách autoplay của Chrome](https://developer.chrome.com/blog/autoplay/). Cần để tab và âm lượng thiết bị không bị tắt tiếng. Trên điện thoại, khóa màn hình/treo tab vẫn có thể ngắt ứng dụng; chưa có push khi đóng tab.
+Ứng dụng yêu cầu quyền thông báo trình duyệt khi vào trang nếu quyền chưa được quyết định, và thử lại trên lần tương tác đầu nếu trình duyệt yêu cầu thao tác người dùng. Mục **Thông báo trình duyệt** luôn giữ trong Cài đặt để yêu cầu lại; nếu đã chặn, cần đổi quyền trong trình duyệt. Quyền thông báo hệ thống tách biệt với chuông trong ứng dụng.
 
-Các âm báo dùng một Web Audio context tạo theo nhu cầu, không tải nhạc/MP3 từ dịch vụ ngoài, không xử lý âm thanh trên backend. Oscillator được giải phóng sau mỗi tiếng báo và timer chuông được hủy khi cuộc gọi dừng.
+Chuông tự ngắt khi nhận, từ chối, hủy, hết hạn hoặc mất kết nối. Một Web Audio context dùng chung, tiếng báo ngắn và bộ đệm sự kiện giới hạn giữ tài nguyên thấp. Bài `npm run test:sounds` kiểm tra tín hiệu Web Audio thật với chính sách autoplay bật, mặc định 100% bỏ qua thiết lập mute cũ, không còn các điều khiển đã bỏ, thông báo trình duyệt còn hiển thị và chuông ngắt đúng lúc.
 
-Kiểm tra âm thanh trên một bộ container/database thử nghiệm riêng:
+## Ảnh và video trong chat
 
-```bash
-TEST_BASE_URL=http://localhost:8089 npm run test:sounds
-```
+JPEG, PNG, WebP, GIF và video MP4/WebM hỗ trợ xem trực tiếp trong tin nhắn. Ảnh có thể mở lớn ở tab mới; video có điều khiển phát/tua, không tự phát và chỉ nạp metadata ban đầu. Vẫn có nút tải bản gốc. Các tệp cũ cũng được nhận dạng lại từ nội dung khi xem. Định dạng/codec trình duyệt không phát được sẽ có lựa chọn tải tệp; backend không chuyển mã video.
 
-Bài kiểm tra dùng Web Audio thật, lấy mẫu tín hiệu tại audio destination, bật chính sách yêu cầu thao tác người dùng và không dùng cờ bỏ qua autoplay. Kiểm tra bật âm thanh, gửi/nhận tin, mute/âm lượng lưu lại, không báo trùng, nghe thử, chuông lặp và dừng khi nhận/từ chối/hủy cuộc gọi, cùng bố cục cài đặt 320 px. Kiểm tra tự động không xác nhận loa vật lý của thiết bị có đang bật hay không.
+Endpoint `?inline=1` kiểm tra thành viên giống tải xuống, chỉ cho phép các loại media nhận dạng được, có hỗ trợ HTTP Range cho tua video và trả 416 cho khoảng không hợp lệ. HTML/SVG và các tệp khác vẫn chỉ được tải về. `npm run test:media` kiểm tra giải mã ảnh, phát video, phân quyền, byte ranges và bố cục di động bằng các fixture màu đơn do dự án tạo.
 
 ## Phân biệt bản xem giao diện và hệ thống thật
 
@@ -145,7 +143,7 @@ Lệnh khôi phục thay thế database đang có. Trước đó hãy sao lưu b
 
 ## Kiểm tra
 
-Để chạy cả ba bài kiểm thử trên database riêng, cần Node.js, npm, Chrome và Docker Compose từ 2.24.4 trở lên. Sandbox dùng cổng 8089 và project riêng, không dùng dữ liệu local ở 8088:
+Để chạy cả bốn bài kiểm thử trên database riêng, cần Node.js, npm, Chrome và Docker Compose từ 2.24.4 trở lên. Sandbox dùng cổng 8089 và project riêng, không dùng dữ liệu local ở 8088:
 
 ```bash
 npm ci
@@ -153,6 +151,7 @@ docker compose -p may-chat-test -f infrastructure/compose.local.yaml -f infrastr
 TEST_BASE_URL=http://localhost:8089 TEST_SERVER_CONTAINER=may-chat-test-server-1 npm run test:limits
 TEST_BASE_URL=http://localhost:8089 npm run test:e2e
 TEST_BASE_URL=http://localhost:8089 npm run test:sounds
+TEST_BASE_URL=http://localhost:8089 npm run test:media
 # Chỉ xóa container và volume thử nghiệm của project may-chat-test:
 docker compose -p may-chat-test -f infrastructure/compose.local.yaml -f infrastructure/compose.test.yaml down -v
 ```

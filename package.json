@@ -6,7 +6,8 @@
     "build": "npm --prefix apps/web run build && node scripts/copy-build.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "test:sounds": "node tests/sounds.mjs",
-    "test:limits": "node tests/limits.mjs"
+    "test:limits": "node tests/limits.mjs",
+    "test:media": "node tests/media.mjs"
   },
   "devDependencies": { "playwright": "^1.58.2" }
 }

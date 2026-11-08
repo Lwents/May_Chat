@@ -33,7 +33,7 @@ try {
         }
         createGain() {
           const gain = super.createGain(), connect = gain.connect.bind(gain);
-          gain.connect = (target, ...args) => { if (target === this.destination) connect(this.probeAnalyser); return connect(target, ...args); };
+          gain.connect = (target, ...args) => { if (target === this.destination) { window.__audioProbe.volume = gain.gain.value; connect(this.probeAnalyser); } return connect(target, ...args); };
           return gain;
         }
         createOscillator() {
@@ -45,84 +45,49 @@ try {
     });
   }
   const [a, b] = contexts;
+  // Old mute preferences must no longer override the always-on defaults.
+  for (const ctx of contexts) await ctx.addInitScript(() => { localStorage.setItem('may-sounds-v1', JSON.stringify({ messages: false, calls: false, volume: 0 })); localStorage.setItem('may-enter-send', 'false'); });
   const alice = await post(a, '/auth/register', { username: `sound_${id}_a`, password: 'Sound-test-pass-123', name: 'Audio Alice' });
   const bob = await post(b, '/auth/register', { username: `sound_${id}_b`, password: 'Sound-test-pass-123', name: 'Audio Bob' });
   const conversation = await post(a, '/conversations', { members: [bob.id], kind: 'direct' });
   const pa = await a.newPage(), pb = await b.newPage();
   for (const p of [pa, pb]) { p.on('pageerror', e => errors.push(e.message)); await p.goto(base); await p.waitForSelector('.app-shell'); }
   await wait(async () => (await pb.locator('.connection').textContent()).includes('Đã kết nối'), 'Receiver WebSocket not connected');
-  // No audio context is created, and no history is sounded, before the first real gesture.
-  assert.equal((await probe(pb)).contexts, 0);
-  await post(a, `/conversations/${conversation.id}/messages`, { body: 'Tin trước khi bật âm', client_message_id: crypto.randomUUID() });
-  await pb.locator('.conversation').getByText('Tin trước khi bật âm', { exact: true }).waitFor();
-  assert.equal((await probe(pb)).started, 0);
-  await pb.getByRole('button', { name: 'Bật âm thanh thông báo', exact: true }).click();
-  await wait(async () => (await probe(pb)).maxRMS > 0.01, 'Explicit unlock did not produce a real audio signal');
-  await resetProbe(pb);
+  // Strict autoplay is still enabled: a regular UI gesture unlocks audio, no special switch.
+  await settings(pb);
+  assert.equal(await pb.evaluate(() => window.__audioProbe.volume), 1);
+  assert.equal(await pb.getByRole('slider').count(), 0);
+  assert.equal(await pb.getByRole('checkbox').count(), 0);
+  assert.equal(await pb.getByRole('button', { name: /Nghe thử|Bật chuông|Bật âm thanh/ }).count(), 0);
+  await pb.getByRole('button', { name: /Thông báo trình duyệt/ }).waitFor();
+  await closeSettings(pb);
   await pa.locator('.conversation').filter({ hasText: 'Audio Bob' }).click();
-  await pa.getByRole('textbox', { name: 'Nhập tin nhắn' }).fill('Tin có âm báo');
-  await pa.getByRole('button', { name: 'Gửi tin nhắn', exact: true }).click();
-  await wait(async () => (await probe(pb)).maxRMS > 0.01, 'Incoming message was silent');
+  await pa.getByRole('textbox', { name: 'Nhập tin nhắn' }).fill('Tin có âm báo tự động');
+  await pa.getByRole('textbox', { name: 'Nhập tin nhắn' }).press('Enter');
+  await wait(async () => (await probe(pb)).maxRMS > 0.01, 'Automatic incoming message alert was silent');
   await wait(async () => (await probe(pa)).maxRMS > 0.005, 'Confirmed outgoing message was silent');
   await resetProbe(pb);
-  const repeated = { body: 'Tin không phát lặp khi retry', client_message_id: crypto.randomUUID() };
+  const repeated = { body: 'Không phát lặp khi retry', client_message_id: crypto.randomUUID() };
   await post(a, `/conversations/${conversation.id}/messages`, repeated);
-  await wait(async () => (await probe(pb)).started > 0, 'Fresh message did not sound');
-  await resetProbe(pb);
-  await post(a, `/conversations/${conversation.id}/messages`, repeated);
-  await pb.waitForTimeout(450); assert.equal((await probe(pb)).started, 0, 'Idempotent retry played a duplicate alert');
-  let dialog = await settings(pb);
-  await dialog.getByRole('checkbox', { name: 'Âm báo tin nhắn' }).uncheck();
-  const slider = dialog.getByRole('slider', { name: 'Âm lượng thông báo' }); await slider.focus(); await slider.press('Home'); for (let n = 0; n < 7; n++) await slider.press('ArrowRight');
-  await closeSettings(pb); await resetProbe(pb);
-  await post(a, `/conversations/${conversation.id}/messages`, { body: 'Tin khi âm báo đã tắt', client_message_id: crypto.randomUUID() });
-  await pb.locator('.conversation').getByText('Tin khi âm báo đã tắt', { exact: true }).waitFor();
-  await pb.waitForTimeout(450); assert.equal((await probe(pb)).started, 0, 'Message mute ignored');
-  await pb.reload(); await pb.waitForSelector('.app-shell');
-  await wait(async () => (await pb.locator('.connection').textContent()).includes('Đã kết nối'), 'Reloaded receiver did not reconnect');
-  const lockedCall = await post(a, '/calls', { conversation_id: conversation.id, mode: 'audio' });
-  await pb.getByRole('button', { name: 'Bật chuông', exact: true }).waitFor();
-  assert.equal((await probe(pb)).contexts, 0, 'Incoming call bypassed the gesture requirement');
-  await pb.getByRole('button', { name: 'Bật chuông', exact: true }).click();
-  await wait(async () => (await probe(pb)).maxRMS > 0.005, 'Gesture did not unlock an already-ringing incoming call');
-  await post(a, `/calls/${lockedCall.id}/leave`, {});
-  await wait(async () => !await pb.locator('.incoming-call').count(), 'Cancelled locked call remained visible');
-  await resetProbe(pb);
-  dialog = await settings(pb); assert.equal(await dialog.getByRole('checkbox', { name: 'Âm báo tin nhắn' }).isChecked(), false); assert.equal(await dialog.getByRole('slider').inputValue(), '35');
-  await dialog.getByRole('checkbox', { name: 'Âm báo tin nhắn' }).check();
-  await dialog.getByRole('button', { name: 'Nghe thử chuông' }).click();
-  await wait(async () => (await probe(pb)).maxRMS > 0.005, 'Ringtone preview was silent');
-  await closeSettings(pb); await resetProbe(pb); await resetProbe(pa);
+  await wait(async () => (await probe(pb)).started > 0, 'Fresh message did not sound'); await resetProbe(pb);
+  await post(a, `/conversations/${conversation.id}/messages`, repeated); await pb.waitForTimeout(450); assert.equal((await probe(pb)).started, 0);
   await pa.getByRole('button', { name: 'Gọi thoại', exact: true }).click();
   await pb.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).waitFor();
-  await wait(async () => (await probe(pb)).maxRMS > 0.005, 'Incoming call ringtone was silent');
+  await wait(async () => (await probe(pb)).maxRMS > 0.005, 'Automatic incoming ringtone was silent');
   await wait(async () => (await probe(pa)).maxRMS > 0.005, 'Outgoing ringback was silent');
   const firstRing = (await probe(pb)).started;
-  await wait(async () => (await probe(pb)).started > firstRing, 'Incoming ringtone did not repeat', 7000);
+  await wait(async () => (await probe(pb)).started > firstRing, 'Ringtone did not repeat', 7000);
   await pb.getByRole('button', { name: 'Từ chối cuộc gọi', exact: true }).click();
   await wait(async () => !await pa.locator('.call-overlay').count(), 'Caller did not end after rejection');
   await resetProbe(pa); await resetProbe(pb); await pb.waitForTimeout(3000);
-  assert.equal((await probe(pb)).started, 0, 'Ringtone kept playing after rejection'); assert.equal((await probe(pa)).started, 0, 'Ringback kept playing after rejection');
-  // Muting call audio persists, without affecting the incoming-call controls.
-  dialog = await settings(pb); await dialog.getByRole('checkbox', { name: 'Chuông cuộc gọi' }).uncheck(); await closeSettings(pb); await resetProbe(pb);
-  await pa.getByRole('button', { name: 'Gọi thoại', exact: true }).click(); await pb.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).waitFor(); await pb.waitForTimeout(500);
-  assert.equal((await probe(pb)).started, 0, 'Muted call still rang');
-  await post(a, `/conversations/${conversation.id}/messages`, { body: 'Tin vẫn có âm khi tắt chuông gọi', client_message_id: crypto.randomUUID() });
-  await wait(async () => (await probe(pb)).maxRMS > 0.005, 'Call mute incorrectly muted message notifications');
-  await resetProbe(pb);
-  await pa.getByRole('button', { name: 'Kết thúc cuộc gọi', exact: true }).click(); await wait(async () => !await pb.locator('.incoming-call').count(), 'Cancelled call remained visible');
-  dialog = await settings(pb); await dialog.getByRole('checkbox', { name: 'Chuông cuộc gọi' }).check(); await closeSettings(pb); await resetProbe(pb);
+  assert.equal((await probe(pb)).started, 0); assert.equal((await probe(pa)).started, 0);
   await pa.getByRole('button', { name: 'Gọi thoại', exact: true }).click(); await pb.getByRole('button', { name: 'Nhận cuộc gọi', exact: true }).click();
   await wait(async () => (await pa.locator('.call-title').textContent()).includes('Đã kết nối'), 'Accepted audio call did not connect', 25000);
   await resetProbe(pa); await resetProbe(pb); await pb.waitForTimeout(3000);
-  assert.equal((await probe(pb)).started, 0, 'Ringtone continued after answering'); assert.equal((await probe(pa)).started, 0, 'Ringback continued after answering');
-  await pa.getByRole('button', { name: 'Kết thúc cuộc gọi', exact: true }).click(); await wait(async () => !await pb.locator('.call-overlay').count(), 'Call did not end');
-  await pb.setViewportSize({ width: 320, height: 568 }); dialog = await settings(pb); await dialog.getByRole('button', { name: 'Nghe thử tin nhắn' }).click(); await pb.waitForTimeout(450);
-  assert.ok(await pb.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile sound settings overflow');
-  await pb.screenshot({ path: 'test-results/mobile-sound-settings.png' });
-  await closeSettings(pb);
-  assert.deepEqual(errors, [], 'Browser errors');
-  console.log('PASS: real Web Audio signal, gesture unlock with autoplay policy enabled, sent/received alerts, no duplicate retry alert, persisted toggles/volume, preview, incoming ringtone loop, outgoing ringback, stop on reject/cancel/answer/end, 320px settings.');
+  assert.equal((await probe(pb)).started, 0); assert.equal((await probe(pa)).started, 0);
+  await pa.getByRole('button', { name: 'Kết thúc cuộc gọi', exact: true }).click();
+  assert.deepEqual(errors, []);
+  console.log('PASS: automatic sent/received audio and ringtone under real autoplay policy, obsolete mute settings ignored, no audio/Enter controls, browser notification setting retained, duplicate suppression, ring stops on reject/answer/end.');
 } catch (error) {
   for (const [i, ctx] of contexts.entries()) for (const page of ctx.pages()) {
     console.log('Failure page', i, 'probe:', await probe(page).catch(() => null), 'dialog:', await page.getByRole('dialog').allTextContents().catch(() => []));

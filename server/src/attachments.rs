@@ -6,14 +6,16 @@ use crate::{
 use axum::{
     Json,
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
 use futures_util::StreamExt;
+use serde::Deserialize;
 use serde_json::json;
+use std::io::SeekFrom;
 use std::path::PathBuf;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
@@ -42,6 +44,12 @@ fn mime_for(prefix: &[u8]) -> &'static str {
         "image/jpeg"
     } else if prefix.starts_with(b"RIFF") && prefix.get(8..12) == Some(b"WEBP") {
         "image/webp"
+    } else if prefix.starts_with(b"GIF87a") || prefix.starts_with(b"GIF89a") {
+        "image/gif"
+    } else if prefix.get(4..8) == Some(b"ftyp") {
+        "video/mp4"
+    } else if prefix.starts_with(b"\x1a\x45\xdf\xa3") {
+        "video/webm"
     } else {
         "application/octet-stream"
     }
@@ -105,7 +113,7 @@ pub async fn upload(
         .open(&partial.0)
         .await?;
     let mut size = 0_u64;
-    let mut prefix = Vec::with_capacity(12);
+    let mut prefix = Vec::with_capacity(64);
     while let Some(chunk) = field.chunk().await.map_err(|e| {
         Error(
             e.status(),
@@ -119,7 +127,7 @@ pub async fn upload(
         if used + size as i64 > DAILY_UPLOAD_BYTES {
             return Err(bad("Đã đạt giới hạn tải lên 1 GB/ngày."));
         }
-        let prefix_bytes = (12 - prefix.len()).min(chunk.len());
+        let prefix_bytes = (64 - prefix.len()).min(chunk.len());
         prefix.extend_from_slice(&chunk[..prefix_bytes]);
         file.write_all(&chunk).await?;
     }
@@ -166,13 +174,19 @@ pub async fn upload(
     ))
 }
 
+#[derive(Deserialize)]
+pub struct DownloadOptions {
+    pub inline: Option<u8>,
+}
+
 pub async fn download(
     State(app): State<App>,
     h: HeaderMap,
     Path(id): Path<String>,
+    Query(options): Query<DownloadOptions>,
 ) -> Result<impl IntoResponse> {
     let user = auth::current(&app, &h).await?;
-    let (cid, mime, name, size): (String, String, String, i64) =
+    let (cid, mut mime, name, size): (String, String, String, i64) =
         sqlx::query_as("SELECT conversation_id,mime,name,size FROM attachments WHERE id=?")
             .bind(&id)
             .fetch_optional(&app.db)
@@ -185,8 +199,39 @@ pub async fn download(
             "Đang xử lý nhiều tệp. Hãy thử lại sau vài giây.".into(),
         )
     })?;
-    let file = tokio::fs::File::open(format!("{}/{}", app.uploads, id)).await?;
-    let reader = ReaderStream::with_capacity(file, 64 * 1024);
+    let mut file = tokio::fs::File::open(format!("{}/{}", app.uploads, id)).await?;
+    if mime == "application/octet-stream" {
+        let mut prefix = [0_u8; 64];
+        let n = file.read(&mut prefix).await?;
+        mime = mime_for(&prefix[..n]).into();
+    }
+    let inline = options.inline == Some(1)
+        && matches!(
+            mime.as_str(),
+            "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "video/mp4" | "video/webm"
+        );
+    let range = if inline {
+        h.get(header::RANGE).and_then(|v| v.to_str().ok())
+    } else {
+        None
+    };
+    let (start, end, status) = if let Some(range) = range {
+        let parsed = parse_range(range, size as u64);
+        let Some((start, end)) = parsed else {
+            return Ok((
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                [(header::CONTENT_RANGE, format!("bytes */{size}"))],
+                Body::empty(),
+            )
+                .into_response());
+        };
+        (start, end, StatusCode::PARTIAL_CONTENT)
+    } else {
+        (0, size as u64 - 1, StatusCode::OK)
+    };
+    let length = end - start + 1;
+    file.seek(SeekFrom::Start(start)).await?;
+    let reader = ReaderStream::with_capacity(file.take(length), 64 * 1024);
     // Retain the permit for the response's lifetime, including slow downloads.
     let stream =
         futures_util::stream::try_unfold((reader, slot), |(mut reader, slot)| async move {
@@ -206,16 +251,51 @@ pub async fn download(
             }
         })
         .collect();
-    Ok((
-        [
-            (header::CONTENT_TYPE, mime),
-            (header::CONTENT_LENGTH, size.to_string()),
-            (
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{id}\"; filename*=UTF-8''{encoded_name}"),
-            ),
-            (header::CACHE_CONTROL, "private, no-store".into()),
-        ],
-        Body::from_stream(stream),
-    ))
+    let disposition = if inline { "inline" } else { "attachment" };
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, mime.parse().unwrap());
+    headers.insert(header::CONTENT_LENGTH, length.to_string().parse().unwrap());
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        format!("{disposition}; filename=\"{id}\"; filename*=UTF-8''{encoded_name}")
+            .parse()
+            .unwrap(),
+    );
+    headers.insert(header::CACHE_CONTROL, "private, no-store".parse().unwrap());
+    if inline {
+        headers.insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
+    }
+    if status == StatusCode::PARTIAL_CONTENT {
+        headers.insert(
+            header::CONTENT_RANGE,
+            format!("bytes {start}-{end}/{size}").parse().unwrap(),
+        );
+    }
+    Ok((status, headers, Body::from_stream(stream)).into_response())
+}
+
+fn parse_range(value: &str, size: u64) -> Option<(u64, u64)> {
+    let value = value.strip_prefix("bytes=")?;
+    if value.contains(',') || size == 0 {
+        return None;
+    }
+    let (start, end) = value.split_once('-')?;
+    if start.is_empty() {
+        let suffix = end.parse::<u64>().ok()?;
+        if suffix == 0 {
+            return None;
+        }
+        return Some((size.saturating_sub(suffix), size - 1));
+    }
+    let start = start.parse::<u64>().ok()?;
+    let end = if end.is_empty() {
+        size - 1
+    } else {
+        end.parse::<u64>().ok()?.min(size - 1)
+    };
+    if start >= size || end < start {
+        None
+    } else {
+        Some((start, end))
+    }
 }

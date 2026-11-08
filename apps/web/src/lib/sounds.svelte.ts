@@ -1,12 +1,11 @@
 type Ring = { id: string; kind: 'incoming' | 'outgoing'; deadline: number };
 type Voice = { oscillator: OscillatorNode; gain: GainNode; family: 'message' | 'ring' };
-const STORAGE_KEY = 'may-sounds-v1';
 
 /** One lazy Web Audio context, with short-lived oscillators and no downloaded media. */
 class Sounds {
   messagesEnabled = $state(true);
   callsEnabled = $state(true);
-  volume = $state(0.7);
+  volume = $state(1);
   ready = $state(false);
   supported = $state(true);
   private context?: AudioContext;
@@ -28,20 +27,18 @@ class Sounds {
     if (this.initialized) return;
     this.initialized = true;
     this.supported = !!this.constructorForBrowser();
-    this.readPreferences();
+    void this.unlock();
     document.addEventListener('pointerdown', this.gesture, true);
     document.addEventListener('touchend', this.gesture, true);
     document.addEventListener('keydown', this.gesture, true);
-    window.addEventListener('storage', this.storage);
+    document.addEventListener('visibilitychange', this.visible);
   }
 
   private gesture = (event: Event) => {
     if (event.target instanceof Element && event.target.closest('[data-enable-audio]')) return;
     if (event.isTrusted && (this.messagesEnabled || this.callsEnabled) && !this.ready) void this.unlock();
   };
-  private storage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === null) this.readPreferences();
-  };
+  private visible = () => { if (document.visibilityState === 'visible' && !this.ready) void this.unlock(); };
 
   /** Called synchronously from a real click/tap/key event to satisfy autoplay policy. */
   async unlock(): Promise<boolean> {
@@ -75,29 +72,6 @@ class Sounds {
     } catch { this.ready = false; return false; }
   }
 
-  private readPreferences() {
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      this.messagesEnabled = stored?.messages !== false;
-      this.callsEnabled = stored?.calls !== false;
-      this.volume = typeof stored?.volume === 'number' && Number.isFinite(stored.volume) ? Math.max(0, Math.min(1, stored.volume)) : 0.7;
-    } catch { /* Keep usable defaults when storage is disabled or malformed. */ }
-    this.applyPreferences();
-  }
-  private save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ messages: this.messagesEnabled, calls: this.callsEnabled, volume: this.volume })); } catch { /* Settings still work in this tab. */ }
-    this.applyPreferences();
-  }
-  private applyPreferences() {
-    if (this.context && this.master) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.02);
-    if (!this.messagesEnabled || this.volume === 0) this.stopVoices('message');
-    if (!this.callsEnabled || this.volume === 0) this.stopVoices('ring');
-    this.syncRing();
-  }
-  setMessagesEnabled(value: boolean) { this.messagesEnabled = value; this.save(); }
-  setCallsEnabled(value: boolean) { this.callsEnabled = value; this.save(); }
-  setVolume(value: number) { if (!Number.isFinite(value)) return; this.volume = Math.max(0, Math.min(1, value)); this.save(); }
-
   private firstEvent(key: string) {
     if (this.recent.has(key)) return false;
     this.recent.add(key);
@@ -128,9 +102,6 @@ class Sounds {
       this.tone(1174.66, 0.11, 0.23, 0.13, 'message');
     }
   }
-  async previewMessage() { if (this.messagesEnabled && await this.unlock()) this.messageTone(false); }
-  async previewRing() { if (this.callsEnabled && await this.unlock()) { this.stopVoices('ring'); this.ringTone('incoming'); } }
-
   startRinging(id: string, kind: Ring['kind'], deadline: number) {
     if (this.wanted?.id === id && this.wanted.kind === kind) return;
     this.stopRinging();
@@ -200,7 +171,7 @@ class Sounds {
     document.removeEventListener('pointerdown', this.gesture, true);
     document.removeEventListener('touchend', this.gesture, true);
     document.removeEventListener('keydown', this.gesture, true);
-    window.removeEventListener('storage', this.storage);
+    document.removeEventListener('visibilitychange', this.visible);
     this.stopRinging(); this.stopVoices('message');
     const context = this.context;
     this.context = undefined; this.master = undefined; this.ready = false; this.initialized = false;
